@@ -93,7 +93,7 @@ The response is a JSON object containing the following fields:
 
 2. **Setup**:
    - Deploy the function to an Azure Function App.
-   - Configure the required runtime (`Python 3.x`).
+   - Configure the required runtime (`Python 3.10`).
 
 3. **Testing**:
    - Use tools like Postman or Curl to test the endpoint.
