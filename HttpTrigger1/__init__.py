@@ -24,15 +24,6 @@ def calculate_moon_phase(date: datetime) -> Dict[str, Any]:
     """
     Calculate moon phase and related data for a given date, including the next new moon,
     first quarter, full moon, and last quarter.
-    
-    Args:
-        date (datetime): The date for which to calculate moon phase
-        
-    Returns:
-        dict: Dictionary containing moon phase information
-        
-    Raises:
-        MoonPhaseError: If calculation fails
     """
     try:
         reference_new_moon = datetime(2000, 1, 6, 18, 14)  # Reference New Moon date
@@ -57,12 +48,10 @@ def calculate_moon_phase(date: datetime) -> Dict[str, Any]:
             (0.765, 0.975): "Waning Crescent"
         }
 
-        # Handle phase wrap-around for new moon
         if phase > 0.975 or phase < 0.025:
             moon_phase = "New Moon"
         else:
-            moon_phase = next(name for (start, end), name in phase_names.items() 
-                            if start <= phase < end)
+            moon_phase = next(name for (start, end), name in phase_names.items() if start <= phase < end)
 
         # Calculate moon age
         moon_age = round(delta % synodic_month, 2)
@@ -95,34 +84,21 @@ def calculate_moon_phase(date: datetime) -> Dict[str, Any]:
 def calculate_moon_details(lat: float, lon: float, date: datetime) -> Dict[str, Any]:
     """
     Calculate moonrise/set and positional data for a given location and date.
-    
-    Args:
-        lat (float): Latitude
-        lon (float): Longitude
-        date (datetime): Date for calculations
-        
-    Returns:
-        dict: Dictionary containing moon position details
-        
-    Raises:
-        MoonPhaseError: If calculation fails
     """
     try:
         observer = ephem.Observer()
         observer.lat = str(lat)
         observer.lon = str(lon)
         observer.date = date
-        observer.pressure = 0  # Use astronomical calculations
-        observer.horizon = '-0:34'  # Standard atmospheric refraction
+        observer.pressure = 0
+        observer.horizon = '-0:34'
 
         moon = ephem.Moon(observer)
         
-        # Calculate moonrise and moonset
         try:
             moonrise = observer.next_rising(moon).datetime()
             moonset = observer.next_setting(moon).datetime()
         except (ephem.CircumpolarError, ephem.NeverUpError) as e:
-            # Handle special cases where moon might not rise or set
             moonrise = None
             moonset = None
             logger.warning(f"Special case for moonrise/set: {str(e)}")
@@ -132,23 +108,37 @@ def calculate_moon_details(lat: float, lon: float, date: datetime) -> Dict[str, 
             "moonset": moonset.isoformat() if moonset else None,
             "altitude": round(math.degrees(moon.alt), 2),
             "azimuth": round(math.degrees(moon.az), 2),
-            "distance_km": round(moon.earth_distance * 149597870.691, 2)  # Convert AU to km
+            "distance_km": round(moon.earth_distance * 149597870.691, 2)
         }
     except Exception as e:
         raise MoonPhaseError(f"Error calculating moon details: {str(e)}")
 
+def calculate_eclipse_details(date: datetime) -> Dict[str, Any]:
+    """
+    Calculate upcoming and past lunar eclipse data relative to a given date.
+    """
+    try:
+        observer = ephem.Observer()
+        observer.date = date
+
+        next_eclipse = ephem.next_lunar_eclipse(observer.date)
+        next_eclipse_date = next_eclipse[0].datetime() if next_eclipse else None
+
+        prev_eclipse = ephem.previous_lunar_eclipse(observer.date)
+        prev_eclipse_date = prev_eclipse[0].datetime() if prev_eclipse else None
+
+        return {
+            "next_lunar_eclipse": next_eclipse_date.isoformat() if next_eclipse_date else None,
+            "previous_lunar_eclipse": prev_eclipse_date.isoformat() if prev_eclipse_date else None
+        }
+    except Exception as e:
+        raise MoonPhaseError(f"Error calculating lunar eclipses: {str(e)}")
+
 def validate_inputs(lat: Optional[str], lon: Optional[str], date_param: Optional[str], timezone_param: Optional[str]) -> Tuple[float, float, datetime, str]:
     """
     Validate and parse input parameters.
-    
-    Returns:
-        tuple: (latitude, longitude, date, timezone)
-        
-    Raises:
-        InvalidInputError: If inputs are invalid
     """
     try:
-        # Validate and parse coordinates
         if lat is None or lon is None:
             raise InvalidInputError("Latitude and longitude are required")
             
@@ -160,7 +150,6 @@ def validate_inputs(lat: Optional[str], lon: Optional[str], date_param: Optional
         if not (-180 <= lon_float <= 180):
             raise InvalidInputError("Longitude must be between -180 and 180 degrees")
 
-        # Validate and parse date
         if date_param:
             date = datetime.fromisoformat(date_param)
             if not (datetime(1900, 1, 1) <= date <= datetime(2100, 1, 1)):
@@ -168,7 +157,6 @@ def validate_inputs(lat: Optional[str], lon: Optional[str], date_param: Optional
         else:
             date = datetime.utcnow()
 
-        # Validate and parse timezone
         timezone = timezone_param or 'UTC'
         if timezone not in pytz.all_timezones:
             raise InvalidInputError("Invalid time zone specified")
@@ -182,36 +170,31 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     Main HTTP-triggered function for moon phase API.
     """
     try:
-        # Log incoming request
         logger.info("Moon phase API triggered", extra={
             "params": dict(req.params),
             "url": req.url,
             "method": req.method
         })
 
-        # Get query parameters
         lat = req.params.get("lat")
         lon = req.params.get("lon")
         date_param = req.params.get("date")
         timezone_param = req.params.get("timezone")
 
-        # Validate inputs
         lat_float, lon_float, date, timezone = validate_inputs(lat, lon, date_param, timezone_param)
 
-        # Calculate basic moon phase
         response = calculate_moon_phase(date)
-
-        # Add position details
         details = calculate_moon_details(lat_float, lon_float, date)
         response.update(details)
 
-        # Convert timestamps to specified time zone
+        eclipse_details = calculate_eclipse_details(date)
+        response.update(eclipse_details)
+
         tz = pytz.timezone(timezone)
-        for key in ["timestamp", "next_new_moon", "next_first_quarter", "next_full_moon", "next_last_quarter", "moonrise", "moonset"]:
+        for key in ["timestamp", "next_new_moon", "next_first_quarter", "next_full_moon", "next_last_quarter", "moonrise", "moonset", "next_lunar_eclipse", "previous_lunar_eclipse"]:
             if key in response and response[key]:
                 response[key] = datetime.fromisoformat(response[key]).astimezone(tz).isoformat()
 
-        # Add request metadata
         response["request_time"] = datetime.utcnow().astimezone(tz).isoformat()
         response["api_version"] = "1.0.0"
 
@@ -220,7 +203,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json",
             status_code=200
         )
-
     except InvalidInputError as e:
         error_response = {"error": "Invalid input", "message": str(e)}
         logger.warning("Invalid input", extra={"error": str(e)})
