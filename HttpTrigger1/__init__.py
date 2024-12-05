@@ -6,6 +6,7 @@ import math
 import json
 from functools import lru_cache
 from typing import Dict, Any, Optional, Tuple
+import pytz
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -21,7 +22,8 @@ class InvalidInputError(Exception):
 @lru_cache(maxsize=128)
 def calculate_moon_phase(date: datetime) -> Dict[str, Any]:
     """
-    Calculate moon phase and related data for a given date.
+    Calculate moon phase and related data for a given date, including the next new moon,
+    first quarter, full moon, and last quarter.
     
     Args:
         date (datetime): The date for which to calculate moon phase
@@ -65,20 +67,27 @@ def calculate_moon_phase(date: datetime) -> Dict[str, Any]:
         # Calculate moon age
         moon_age = round(delta % synodic_month, 2)
 
-        # Calculate next full moon
-        cycles_since_ref = delta / synodic_month
-        next_full_moon_cycles = math.ceil(cycles_since_ref - 0.5) + 0.5
-        next_full_moon_days = next_full_moon_cycles * synodic_month
-        next_full_moon_date = reference_new_moon + timedelta(days=next_full_moon_days)
+        # Calculate next key phases
+        next_phases = {}
+        for key_phase, phase_offset in {
+            "next_new_moon": 0.0,
+            "next_first_quarter": 0.25,
+            "next_full_moon": 0.5,
+            "next_last_quarter": 0.75
+        }.items():
+            cycles_since_ref = delta / synodic_month
+            target_phase_cycles = math.ceil(cycles_since_ref - phase + phase_offset)
+            target_phase_days = target_phase_cycles * synodic_month
+            next_phases[key_phase] = (reference_new_moon + timedelta(days=target_phase_days)).isoformat()
 
         return {
             "moon_phase": moon_phase,
             "illumination": illumination,
             "moon_age": moon_age,
-            "next_full_moon": next_full_moon_date.isoformat(),
             "phase_percentage": round(phase * 100, 1),
             "is_waxing": phase < 0.5,
-            "timestamp": date.isoformat()
+            "timestamp": date.isoformat(),
+            **next_phases
         }
     except Exception as e:
         raise MoonPhaseError(f"Error calculating moon phase: {str(e)}")
@@ -128,12 +137,12 @@ def calculate_moon_details(lat: float, lon: float, date: datetime) -> Dict[str, 
     except Exception as e:
         raise MoonPhaseError(f"Error calculating moon details: {str(e)}")
 
-def validate_inputs(lat: Optional[str], lon: Optional[str], date_param: Optional[str]) -> Tuple[float, float, datetime]:
+def validate_inputs(lat: Optional[str], lon: Optional[str], date_param: Optional[str], timezone_param: Optional[str]) -> Tuple[float, float, datetime, str]:
     """
     Validate and parse input parameters.
     
     Returns:
-        tuple: (latitude, longitude, date)
+        tuple: (latitude, longitude, date, timezone)
         
     Raises:
         InvalidInputError: If inputs are invalid
@@ -159,7 +168,12 @@ def validate_inputs(lat: Optional[str], lon: Optional[str], date_param: Optional
         else:
             date = datetime.utcnow()
 
-        return lat_float, lon_float, date
+        # Validate and parse timezone
+        timezone = timezone_param or 'UTC'
+        if timezone not in pytz.all_timezones:
+            raise InvalidInputError("Invalid time zone specified")
+        
+        return lat_float, lon_float, date, timezone
     except ValueError as e:
         raise InvalidInputError(f"Invalid input format: {str(e)}")
 
@@ -179,9 +193,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         lat = req.params.get("lat")
         lon = req.params.get("lon")
         date_param = req.params.get("date")
+        timezone_param = req.params.get("timezone")
 
         # Validate inputs
-        lat_float, lon_float, date = validate_inputs(lat, lon, date_param)
+        lat_float, lon_float, date, timezone = validate_inputs(lat, lon, date_param, timezone_param)
 
         # Calculate basic moon phase
         response = calculate_moon_phase(date)
@@ -190,8 +205,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         details = calculate_moon_details(lat_float, lon_float, date)
         response.update(details)
 
+        # Convert timestamps to specified time zone
+        tz = pytz.timezone(timezone)
+        for key in ["timestamp", "next_new_moon", "next_first_quarter", "next_full_moon", "next_last_quarter", "moonrise", "moonset"]:
+            if key in response and response[key]:
+                response[key] = datetime.fromisoformat(response[key]).astimezone(tz).isoformat()
+
         # Add request metadata
-        response["request_time"] = datetime.utcnow().isoformat()
+        response["request_time"] = datetime.utcnow().astimezone(tz).isoformat()
         response["api_version"] = "1.0.0"
 
         return func.HttpResponse(
