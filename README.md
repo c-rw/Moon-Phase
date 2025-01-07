@@ -1,111 +1,106 @@
-# Azure Function: Moon Phase API
+# Azure Function: Moon Phase and Mercury Retrograde API
 
 ## Overview
 
-This Azure Function is an HTTP-triggered API that calculates moon phase data and related positional details based on user-provided inputs. It includes the moon's phase, illumination percentage, moonrise/set times, and positional data (altitude, azimuth, and distance from Earth). The function uses precise astronomical calculations and validates user inputs for accuracy.
+This Azure Function is an HTTP-triggered API that calculates the moon's phase, positional data, and Mercury's retrograde status. It uses precise astronomical calculations with timezone localization and optimized caching for performance.
+
+---
 
 ## Features
 
-- **Moon Phase Calculation**: Determines the moon's phase (e.g., New Moon, Full Moon) based on the date.
-- **Illumination Percentage**: Calculates how much of the moon's surface is illuminated.
-- **Moonrise and Moonset**: Provides the times for moonrise and moonset at the specified location.
-- **Positional Data**: Includes altitude, azimuth, and distance of the moon.
-- **Error Handling**: Custom exceptions and detailed error responses for invalid inputs or calculation errors.
+- **Moon Phase Information**: Calculates the moon's phase, illumination percentage, and age.
+- **Mercury Retrograde**: Detects Mercury's retrograde status and provides transition dates.
+- **Moonrise and Moonset**: Provides moonrise and moonset times for a specified location.
+- **Moon Positional Data**: Computes altitude, azimuth, and distance from Earth.
+- **Timezone Localization**: All timestamps are adjusted to the provided timezone.
+- **Optimized Performance**: Frequently requested calculations are cached for efficiency.
 
-## Usage
+---
+
+## API Usage
 
 ### Request Parameters
 
-The API accepts the following query parameters:
+| Parameter       | Required | Description                                 |
+|------------------|----------|---------------------------------------------|
+| `lat`           | Yes      | Latitude (-90 to 90).                       |
+| `lon`           | Yes      | Longitude (-180 to 180).                    |
+| `date`          | No       | ISO 8601 date (defaults to current UTC).    |
+| `timezone`      | No       | Timezone (defaults to `UTC`).               |
 
-- `lat` (required): Latitude of the location (-90 to 90 degrees).
-- `lon` (required): Longitude of the location (-180 to 180 degrees).
-- `date` (optional): ISO 8601 formatted date (e.g., `2024-11-30`). Defaults to the current UTC date if not provided.
+---
 
 ### Example Request
 
 ```http
-GET /api/moonphase?lat=40.7128&lon=-74.0060&date=2024-11-30
+GET /api/moonphase?lat=40.7128&lon=-74.0060&date=2025-01-01T00:00:00Z&timezone=America/New_York
 ```
+
+---
 
 ### Response Format
 
-The response is a JSON object containing the following fields:
+The API returns a JSON object with the following fields:
 
-- **Moon Phase Data**:
-  - `moon_phase`: Name of the current moon phase.
-  - `illumination`: Illumination percentage.
-  - `moon_age`: Age of the moon in days.
-  - `next_full_moon`: Date of the next full moon.
-  - `phase_percentage`: Percentage of the current lunar phase.
-  - `is_waxing`: Boolean indicating whether the moon is waxing.
+- **Moon Phase**:
+  - `moon_phase`, `illumination`, `moon_age`, `is_waxing`.
+  - Dates for upcoming lunar phases: `next_new_moon`, `next_full_moon`, etc.
 
-- **Positional Data**:
-  - `moonrise`: ISO 8601 formatted time for moonrise.
-  - `moonset`: ISO 8601 formatted time for moonset.
-  - `altitude`: Moon's altitude in degrees.
-  - `azimuth`: Moon's azimuth in degrees.
-  - `distance_km`: Distance of the moon from Earth in kilometers.
+- **Mercury Retrograde**:
+  - `is_retrograde`: Current retrograde status.
+  - Transition dates: `next_retrograde_start`, `next_retrograde_end`.
+
+- **Moon Positional Data**:
+  - `moonrise`, `moonset`, `altitude`, `azimuth`, `distance_km`.
 
 - **Metadata**:
-  - `request_time`: Time the request was processed.
-  - `api_version`: Current API version (`1.0.0`).
+  - `request_time`: API request timestamp.
+  - `api_version`: Current version of the API.
+
+---
 
 ### Example Response
 
 ```json
 {
   "moon_phase": "Waxing Crescent",
-  "illumination": 23.5,
-  "moon_age": 3.4,
-  "next_full_moon": "2024-12-14T12:15:00",
-  "phase_percentage": 11.7,
-  "is_waxing": true,
-  "moonrise": "2024-11-30T06:12:00",
-  "moonset": "2024-11-30T17:45:00",
+  "illumination": 45.3,
+  "moon_age": 7.5,
+  "next_full_moon": "2025-01-25T03:41:00Z",
+  "is_retrograde": false,
+  "next_retrograde_start": "2025-03-12T14:00:00Z",
+  "moonrise": "2025-01-01T06:12:00-05:00",
+  "moonset": "2025-01-01T18:45:00-05:00",
   "altitude": 45.6,
   "azimuth": 120.3,
   "distance_km": 384400.12,
-  "request_time": "2024-11-30T15:00:00",
-  "api_version": "1.0.0"
+  "request_time": "2025-01-01T00:00:00-05:00",
+  "api_version": "1.2.0"
 }
 ```
 
-## Implementation Details
+---
 
-- **Language**: Python
-- **Libraries**:
-  - `azure.functions`: For Azure Function integrations.
-  - `ephem`: For precise astronomical calculations.
-  - `datetime`: For date and time manipulations.
-  - `math`: For mathematical operations.
-  - `functools.lru_cache`: To optimize repetitive calculations.
-- **Error Handling**:
-  - `MoonPhaseError`: Raised for calculation errors.
-  - `InvalidInputError`: Raised for invalid inputs.
-  - General exception handling for unexpected errors.
+## Deployment
 
-## Deployment Instructions
+1. **Setup Azure Function App**:
+   - Deploy using Azure CLI or portal.
+   - Install dependencies:
+     ```bash
+     pip install -r requirements.txt
+     ```
 
-1. **Prerequisites**:
-   - Azure subscription.
-   - Python runtime installed locally.
+2. **Test API**:
+   - Validate using Curl, Postman, or browser.
 
-2. **Setup**:
-   - Deploy the function to an Azure Function App.
-   - Configure the required runtime (`Python 3.10`).
+3. **Monitor**:
+   - Use Azure Application Insights for logs and diagnostics.
 
-3. **Testing**:
-   - Use tools like Postman or Curl to test the endpoint.
-   - Ensure valid latitude, longitude, and date values are provided.
-
-4. **Monitoring**:
-   - Use Azure Application Insights for real-time logging and diagnostics.
+---
 
 ## Future Enhancements
 
-- Add support for additional astronomical calculations.
-- Enhance error messaging for special edge cases (e.g., moonrise/set unavailability).
-- Optimize API response time with caching.
+- Support additional planetary retrograde calculations.
+- Handle edge cases like polar moonrise/set behavior.
 
-This function is reliable for providing lunar data and can be easily integrated into applications requiring moon phase information.
+--- 
