@@ -2,6 +2,6 @@
 # The Python Worker is managed by Azure Functions platform
 # Manually managing azure-functions-worker may cause unexpected issues
 
-azure-functions
-ephem
-pytz
+azure-functions>=4.0.0,<5.0.0
+ephem==4.1.6
+pytz==2024.1
